@@ -4,44 +4,62 @@ from app.main import app
 
 client = TestClient(app)
 
-def test_register_and_login_flow():
-    unique_suffix = uuid.uuid4().hex[:8]
-    email = f"owner_{unique_suffix}@example.com"
-    password = "securePassword123"
-    restaurant_name = f"Cafe {unique_suffix}"
+def test_single_restaurant_register_and_roles():
+    unique = uuid.uuid4().hex[:8]
+    admin_email = f"admin_{unique}@example.com"
+    customer_email = f"cust_{unique}@example.com"
+    pwd = "securePassword123"
 
-    # 1. Register restaurant + owner
-    reg_response = client.post(
+    # 1. Register Admin without specifying restaurant_name
+    admin_res = client.post(
         "/auth/register",
         json={
-            "restaurant_name": restaurant_name,
-            "full_name": "Test Owner",
-            "email": email,
-            "password": password,
+            "full_name": "Restaurant Admin",
+            "email": admin_email,
+            "password": pwd,
+            "role": "admin",
         },
     )
-    assert reg_response.status_code == 201, reg_response.text
-    token_data = reg_response.json()
-    assert "access_token" in token_data
-    access_token = token_data["access_token"]
+    assert admin_res.status_code == 201, admin_res.text
+    admin_token = admin_res.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # 2. Access /auth/me with Bearer token
-    me_response = client.get(
-        "/auth/me",
-        headers={"Authorization": f"Bearer {access_token}"},
+    # Verify admin role via /auth/me
+    me_res = client.get("/auth/me", headers=admin_headers)
+    assert me_res.status_code == 200
+    assert me_res.json()["role"] == "admin"
+
+    # Admin CAN create category
+    cat_res = client.post(
+        "/admin/menu/categories",
+        headers=admin_headers,
+        json={"name": f"Drinks {unique}", "sort_order": 0},
     )
-    assert me_response.status_code == 200, me_response.text
-    user_info = me_response.json()
-    assert user_info["email"] == email
-    assert user_info["role"] == "owner"
+    assert cat_res.status_code == 201
 
-    # 3. Login with credentials
-    login_response = client.post(
-        "/auth/login",
+    # 2. Register Customer without restaurant_name
+    cust_res = client.post(
+        "/auth/register",
         json={
-            "email": email,
-            "password": password,
+            "full_name": "Hungry Customer",
+            "email": customer_email,
+            "password": pwd,
+            "role": "customer",
         },
     )
-    assert login_response.status_code == 200, login_response.text
-    assert "access_token" in login_response.json()
+    assert cust_res.status_code == 201, cust_res.text
+    cust_token = cust_res.json()["access_token"]
+    cust_headers = {"Authorization": f"Bearer {cust_token}"}
+
+    # Verify customer role
+    cust_me = client.get("/auth/me", headers=cust_headers)
+    assert cust_me.status_code == 200
+    assert cust_me.json()["role"] == "customer"
+
+    # Customer CANNOT create or edit menu categories (403 Forbidden)
+    forbidden_res = client.post(
+        "/admin/menu/categories",
+        headers=cust_headers,
+        json={"name": "Hacked Category", "sort_order": 99},
+    )
+    assert forbidden_res.status_code == 403, "Customer must not be allowed to modify menu"

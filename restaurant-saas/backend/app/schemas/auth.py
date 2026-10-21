@@ -1,10 +1,11 @@
 from pydantic import BaseModel, EmailStr
 
 class RegisterRequest(BaseModel):
-    restaurant_name: str
     full_name: str
     email: EmailStr
     password: str
+    role: str = "admin"  # "admin" | "customer"
+    restaurant_name: str | None = None  # Optional for backwards compatibility
 
 class LoginRequest(BaseModel):
     email: EmailStr

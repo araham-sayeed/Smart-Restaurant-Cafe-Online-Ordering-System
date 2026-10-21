@@ -25,15 +25,24 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     if db.scalar(select(User).where(User.email == data.email)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email already registered")
 
-    restaurant = Restaurant(name=data.restaurant_name, slug=make_unique_slug(db, data.restaurant_name))
-    db.add(restaurant)
-    db.flush()  # get restaurant.id
+    # Single-restaurant setup: look for the primary restaurant or initialize it
+    restaurant = db.scalar(select(Restaurant).order_by(Restaurant.id))
+    if not restaurant:
+        rest_name = data.restaurant_name or "Smart Restaurant & Cafe"
+        restaurant = Restaurant(name=rest_name, slug=make_unique_slug(db, rest_name))
+        db.add(restaurant)
+        db.flush()  # get restaurant.id
+
+    # Allow "admin" or "customer" (or legacy "owner")
+    role = (data.role or "admin").lower()
+    if role not in ["admin", "customer", "owner"]:
+        role = "customer"
 
     user = User(
         email=data.email,
         hashed_password=hash_password(data.password),
         full_name=data.full_name,
-        role="owner",
+        role=role,
         restaurant_id=restaurant.id,
     )
     db.add(user)

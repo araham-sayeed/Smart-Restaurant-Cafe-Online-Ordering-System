@@ -5,10 +5,10 @@ import { useAuth } from "../../store/useAuth";
 
 export default function Register() {
   const [form, setForm] = useState({
-    restaurant_name: "",
     full_name: "",
     email: "",
     password: "",
+    role: "admin", // default to admin
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,9 +41,9 @@ export default function Register() {
         className="bg-white rounded-xl shadow p-8 w-full max-w-sm space-y-4"
       >
         <div>
-          <h1 className="text-2xl font-semibold text-ink">Create Restaurant</h1>
+          <h1 className="text-2xl font-semibold text-ink">Create Account</h1>
           <p className="text-xs text-gray-500 mt-1">
-            Register your cafe or restaurant account
+            Sign up to access your restaurant ordering system
           </p>
         </div>
 
@@ -55,23 +55,7 @@ export default function Register() {
 
         <div>
           <label className="block text-xs font-medium text-ink mb-1">
-            Restaurant Name
-          </label>
-          <input
-            className="w-full border rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-sage"
-            type="text"
-            placeholder="e.g. Cozy Corner Cafe"
-            value={form.restaurant_name}
-            onChange={(e) =>
-              setForm({ ...form, restaurant_name: e.target.value })
-            }
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-ink mb-1">
-            Your Full Name
+            Full Name
           </label>
           <input
             className="w-full border rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-sage"
@@ -90,7 +74,7 @@ export default function Register() {
           <input
             className="w-full border rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-sage"
             type="email"
-            placeholder="owner@example.com"
+            placeholder="user@example.com"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             required
@@ -112,12 +96,42 @@ export default function Register() {
           />
         </div>
 
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1">
+            Account Role
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, role: "admin" })}
+              className={`p-2 text-xs font-medium rounded border text-center transition-all ${
+                form.role === "admin"
+                  ? "border-sage bg-sage/10 text-ink font-semibold"
+                  : "border-gray-200 text-gray-500 hover:bg-gray-50"
+              }`}
+            >
+              Admin (Manage Menu)
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, role: "customer" })}
+              className={`p-2 text-xs font-medium rounded border text-center transition-all ${
+                form.role === "customer"
+                  ? "border-sage bg-sage/10 text-ink font-semibold"
+                  : "border-gray-200 text-gray-500 hover:bg-gray-50"
+              }`}
+            >
+              Customer (Order only)
+            </button>
+          </div>
+        </div>
+
         <button
           type="submit"
           disabled={loading}
           className="w-full bg-sage-dark hover:opacity-95 text-white font-medium rounded p-2 transition-opacity disabled:opacity-50"
         >
-          {loading ? "Creating Account..." : "Register Restaurant"}
+          {loading ? "Creating Account..." : "Register"}
         </button>
 
         <p className="text-sm text-ink text-center pt-2">
