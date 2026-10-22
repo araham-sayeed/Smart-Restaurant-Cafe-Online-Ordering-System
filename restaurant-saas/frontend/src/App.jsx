@@ -1,73 +1,80 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./store/useAuth";
-import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
+import OtpNotificationBar from "./components/OtpNotificationBar";
 
-// Auth & admin pages
-import Login from "./pages/admin/Login";
-import Register from "./pages/admin/Register";
+import AdminLogin from "./pages/admin/Login";
+import CustomerLogin from "./pages/customer/Login";
+import CustomerRegister from "./pages/customer/Register";
 import Dashboard from "./pages/admin/Dashboard";
 import MenuBuilder from "./pages/admin/MenuBuilder";
 
-// Customer store pages
 import Menu from "./pages/store/Menu";
+import MenuRedirect from "./pages/store/MenuRedirect";
 import Checkout from "./pages/store/Checkout";
 import OrderConfirmation from "./pages/store/OrderConfirmation";
 
-// Phase 4 (uncomment each import and its route when you build the file)
-// import LiveQueue from "./pages/kitchen/LiveQueue";
-// import OrderTracking from "./pages/store/OrderTracking";
+const isAdminRole = (role) => role === "admin" || role === "owner";
 
 function Home() {
   const token = useAuth((s) => s.token);
-  return <Navigate to={token ? "/admin" : "/login"} replace />;
+  const user = useAuth((s) => s.user);
+  const fetchMe = useAuth((s) => s.fetchMe);
+
+  useEffect(() => {
+    if (token && !user) fetchMe().catch(() => {});
+  }, [token, user, fetchMe]);
+
+  if (!token) {
+    return <Navigate to="/customer/login" replace />;
+  }
+  if (user) {
+    if (isAdminRole(user.role)) {
+      return <Navigate to="/admin" replace />;
+    }
+    return <Navigate to={user.restaurant_slug ? `/r/${user.restaurant_slug}` : "/menu"} replace />;
+  }
+  return (
+    <div className="min-h-screen bg-cream flex items-center justify-center text-ink/60">
+      Loading…
+    </div>
+  );
 }
 
 export default function App() {
   return (
     <BrowserRouter>
+      <OtpNotificationBar />
       <Routes>
-        {/* Home */}
         <Route path="/" element={<Home />} />
 
-        {/* Auth & admin */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/login" element={<AdminLogin />} />
+        <Route path="/customer/login" element={<CustomerLogin />} />
+        <Route path="/register" element={<CustomerRegister />} />
+
         <Route
           path="/admin"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <Dashboard />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
         <Route
           path="/admin/menu"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <MenuBuilder />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
-        {/* Kitchen (Phase 4) */}
-        {/*
-        <Route
-          path="/kitchen"
-          element={
-            <ProtectedRoute>
-              <LiveQueue />
-            </ProtectedRoute>
-          }
-        />
-        */}
-
-        {/* Customer storefront & order flow */}
+        <Route path="/menu" element={<MenuRedirect />} />
         <Route path="/r/:slug" element={<Menu />} />
         <Route path="/r/:slug/checkout" element={<Checkout />} />
         <Route path="/r/:slug/order/:publicId" element={<OrderConfirmation />} />
-        {/* Phase 4: replace OrderConfirmation above with <OrderTracking /> */}
 
-        {/* Catch-all: unknown URLs follow the home rule */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

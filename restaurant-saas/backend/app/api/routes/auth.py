@@ -1,48 +1,102 @@
-import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.security import hash_password, verify_password, create_access_token
 from app.db.session import get_db
 from app.models.restaurant import Restaurant
 from app.models.user import User
-from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserOut
+from app.schemas.auth import (
+    RegisterRequest,
+    LoginRequest,
+    TokenResponse,
+    UserOut,
+    OtpRequest,
+    OtpRequestResponse,
+)
+from app.services.otp_service import issue_otp, verify_otp
+from app.utils.identifiers import normalize_identifier
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-def make_unique_slug(db: Session, name: str) -> str:
-    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "restaurant"
-    slug, n = base, 1
-    while db.scalar(select(Restaurant).where(Restaurant.slug == slug)):
-        n += 1
-        slug = f"{base}-{n}"
-    return slug
+ADMIN_ROLES = {"admin", "owner"}
+
+
+def find_user_by_identifier(db: Session, identifier: str) -> User | None:
+    kind, normalized = normalize_identifier(identifier)
+    if kind == "email":
+        return db.scalar(select(User).where(User.email == normalized))
+    return db.scalar(select(User).where(User.phone == normalized))
+
+
+def otp_identifier_for_user(user: User) -> str:
+    if user.email:
+        return user.email.lower()
+    if user.phone:
+        return user.phone
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, "User has no login identifier")
+
+
+def user_to_out(user: User) -> UserOut:
+    slug = user.restaurant.slug if user.restaurant else ""
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        phone=user.phone,
+        full_name=user.full_name,
+        role=user.role,
+        restaurant_id=user.restaurant_id,
+        restaurant_slug=slug,
+    )
+
+
+@router.post("/otp/request", response_model=OtpRequestResponse)
+def request_otp(data: OtpRequest, db: Session = Depends(get_db)):
+    kind, normalized = normalize_identifier(data.identifier)
+
+    if data.purpose == "login":
+        user = find_user_by_identifier(db, data.identifier)
+        if not user:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+        otp_id = otp_identifier_for_user(user)
+    else:
+        if kind == "phone":
+            if db.scalar(select(User).where(User.phone == normalized)):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Phone already registered")
+        else:
+            if db.scalar(select(User).where(User.email == normalized)):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email already registered")
+        otp_id = normalized
+
+    code = issue_otp(data.purpose, otp_id)
+    dev_otp = code if settings.EXPOSE_DEV_OTP else None
+    return OtpRequestResponse(dev_otp=dev_otp)
+
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(data: RegisterRequest, db: Session = Depends(get_db)):
-    if db.scalar(select(User).where(User.email == data.email)):
+    if not verify_otp("register", data.phone, data.otp_code):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired OTP")
+
+    if db.scalar(select(User).where(User.phone == data.phone)):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Phone already registered")
+
+    email = data.email.lower() if data.email else None
+    if email and db.scalar(select(User).where(User.email == email)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email already registered")
 
-    # Single-restaurant setup: look for the primary restaurant or initialize it
     restaurant = db.scalar(select(Restaurant).order_by(Restaurant.id))
     if not restaurant:
-        rest_name = data.restaurant_name or "Smart Restaurant & Cafe"
-        restaurant = Restaurant(name=rest_name, slug=make_unique_slug(db, rest_name))
-        db.add(restaurant)
-        db.flush()  # get restaurant.id
-
-    # Allow "admin" or "customer" (or legacy "owner")
-    role = (data.role or "admin").lower()
-    if role not in ["admin", "customer", "owner"]:
-        role = "customer"
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Restaurant not configured")
 
     user = User(
-        email=data.email,
+        email=email,
+        phone=data.phone,
         hashed_password=hash_password(data.password),
-        full_name=data.full_name,
-        role=role,
+        full_name=data.full_name.strip(),
+        role="customer",
         restaurant_id=restaurant.id,
     )
     db.add(user)
@@ -50,18 +104,30 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(user)
     return TokenResponse(access_token=create_access_token(user.id, user.role, user.restaurant_id))
 
+
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == data.email))
+    user = find_user_by_identifier(db, data.identifier)
     if not user or not verify_password(data.password, user.hashed_password):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect phone/email or password")
+
+    otp_id = otp_identifier_for_user(user)
+    if not verify_otp("login", otp_id, data.otp_code):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired OTP")
+
     return TokenResponse(access_token=create_access_token(user.id, user.role, user.restaurant_id))
 
-# Lets the Swagger "Authorize" button work
+
 @router.post("/login-form", response_model=TokenResponse, include_in_schema=False)
 def login_form(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    return login(LoginRequest(email=form.username, password=form.password), db)
+    return login(LoginRequest(identifier=form.username, password=form.password, otp_code="000000"), db)
+
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    loaded = db.scalar(
+        select(User)
+        .where(User.id == user.id)
+        .options(joinedload(User.restaurant))
+    )
+    return user_to_out(loaded or user)

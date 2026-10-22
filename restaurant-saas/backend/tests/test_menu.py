@@ -1,24 +1,23 @@
 import uuid
-from decimal import Decimal
 from fastapi.testclient import TestClient
 from app.main import app
+from app.services.seed import DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD
 
 client = TestClient(app)
 
 def test_menu_crud_and_public_endpoint():
     unique = uuid.uuid4().hex[:8]
-    email = f"chef_{unique}@example.com"
-    pwd = "secretpassword"
-    rname = f"Bistro {unique}"
 
-    # 1. Register owner
-    reg_res = client.post(
-        "/auth/register",
-        json={"restaurant_name": rname, "full_name": "Head Chef", "email": email, "password": pwd},
+    login_res = client.post(
+        "/auth/login",
+        json={
+            "identifier": DEFAULT_ADMIN_EMAIL,
+            "password": DEFAULT_ADMIN_PASSWORD,
+            "otp_code": "000000",
+        },
     )
-    assert reg_res.status_code == 201
-    token = reg_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    assert login_res.status_code == 200, login_res.text
+    headers = {"Authorization": f"Bearer {login_res.json()['access_token']}"}
 
     # 2. Create Category
     cat_res = client.post(

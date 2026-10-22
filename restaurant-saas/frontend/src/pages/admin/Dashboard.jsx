@@ -60,46 +60,34 @@ export default function Dashboard() {
               </p>
             </Link>
 
-            {/* Card: Storefront Preview */}
-            <div className="bg-white border rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-2xl">🛍️</span>
-                  <span className="text-xs bg-sage/20 text-ink px-2.5 py-0.5 rounded-full font-mono font-medium">
-                    Admin Active
-                  </span>
-                </div>
-                <h2 className="text-lg font-bold text-ink mb-1">Customer Storefront</h2>
-                <p className="text-xs text-gray-500">
-                  Preview how your online ordering menu appears to customers for dine-in and takeout.
-                </p>
+            <Link
+              to={user?.restaurant_slug ? `/r/${user.restaurant_slug}` : "/menu"}
+              className="group block bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md hover:border-sage transition-all"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-2xl">🛍️</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-sage group-hover:underline">
+                  Open &rarr;
+                </span>
               </div>
-              <div className="pt-4 mt-2">
-                <Link
-                  to="/admin/menu"
-                  className="inline-block text-xs font-medium text-sage hover:underline"
-                >
-                  Manage Dishes & Modifiers &rarr;
-                </Link>
-              </div>
-            </div>
+              <h2 className="text-lg font-bold text-ink mb-1">Customer Storefront</h2>
+              <p className="text-xs text-gray-500">
+                Preview the live menu customers see (same items as Menu Builder).
+              </p>
+            </Link>
           </div>
         ) : (
-          /* Customer View */
           <div className="bg-white border rounded-2xl p-8 shadow-sm max-w-xl">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-3xl">🍽️</span>
-              <div>
-                <h2 className="text-xl font-bold text-ink">Customer Account</h2>
-                <span className="text-xs text-gray-400">Order & Dine In</span>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
-              You are logged in as a <strong>Customer</strong>. Customers have access to browse the active menu, customize options, and place pickup/dine-in orders. Only <strong>Admin</strong> accounts can modify dishes, categories, and prices.
+            <h2 className="text-xl font-bold text-ink mb-2">Browse & order</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Your account is linked to the restaurant menu. Tap below to see every dish the kitchen offers.
             </p>
-            <div className="p-4 bg-sand/30 rounded-xl border border-sand text-xs text-gray-600">
-              💡 <strong>Tip for Testing:</strong> If you want to test adding and editing menu items, log out and register an account selecting <strong>Admin</strong>.
-            </div>
+            <Link
+              to={user?.restaurant_slug ? `/r/${user.restaurant_slug}` : "/menu"}
+              className="inline-block bg-sage-dark text-white px-6 py-3 rounded-xl text-sm font-semibold hover:opacity-95"
+            >
+              Open menu
+            </Link>
           </div>
         )}
       </main>

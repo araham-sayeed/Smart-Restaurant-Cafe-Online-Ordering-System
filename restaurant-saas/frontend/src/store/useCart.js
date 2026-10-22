@@ -1,112 +1,56 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-/**
- * Generate a stable key for a cart line based on item + chosen options.
- * Two lines are the same if they have the same item AND the same set of options.
- */
-function makeKey(itemId, options = []) {
-  const optIds = [...options].map((o) => o.id).sort().join(",");
-  return `${itemId}:${optIds}`;
-}
+const lineKey = (itemId, options, note) =>
+    `${itemId}|${options.map((o) => o.id).sort((a, b) => a - b).join(",")}|${note}`;
 
-/**
- * Calculate the unit price of a cart line (base price + all selected add-on prices).
- */
-export function lineUnitPrice(line) {
-  const base = Number(line.price) || 0;
-  const extras = (line.options || []).reduce(
-    (sum, o) => sum + (Number(o.extra_price) || 0),
-    0
-  );
-  return base + extras;
-}
+export const lineUnitPrice = (l) =>
+    Number(l.basePrice) + l.options.reduce((s, o) => s + Number(o.extra_price), 0);
 
-const useCart = create(
-  persist(
-    (set, get) => ({
-      lines: [],   // array of line objects
-      isOpen: false,
+export const useCart = create(
+    persist(
+        (set, get) => ({
+            slug: null,
+            lines: [],
+            isOpen: false,
 
-      // ── Actions ──────────────────────────────────────────────────────────────
+            addLine: (slug, item, options, qty = 1, note = "") => {
+                // different restaurant → start a fresh cart
+                if (get().slug && get().slug !== slug) set({ lines: [], slug });
+                else set({ slug });
 
-      /**
-       * Add an item to the cart.
-       * If an identical line (same item + same options) already exists,
-       * increment its quantity instead of creating a duplicate.
-       */
-      addLine: (slug, item, options = [], qty = 1, note = "") => {
-        const key = makeKey(item.id, options);
-        set((state) => {
-          const existing = state.lines.find((l) => l.key === key);
-          if (existing) {
-            return {
-              lines: state.lines.map((l) =>
-                l.key === key ? { ...l, qty: l.qty + qty } : l
-              ),
-            };
-          }
-          return {
-            lines: [
-              ...state.lines,
-              {
-                key,
-                slug,
-                itemId: item.id,
-                name: item.name,
-                price: Number(item.price),
-                options,
-                qty,
-                note,
-              },
-            ],
-          };
-        });
-      },
+                const key = lineKey(item.id, options, note);
+                const existing = get().lines.find((l) => l.key === key);
+                if (existing) {
+                    set({ lines: get().lines.map((l) => (l.key === key ? { ...l, qty: l.qty + qty } : l)) });
+                } else {
+                    set({
+                        lines: [
+                            ...get().lines,
+                            { key, itemId: item.id, name: item.name, basePrice: item.price, options, qty, note },
+                        ],
+                    });
+                }
+            },
 
-      /** Change quantity by delta (+1 or -1). Removes the line if qty drops to 0. */
-      changeQty: (key, delta) => {
-        set((state) => {
-          const updated = state.lines
-            .map((l) => (l.key === key ? { ...l, qty: l.qty + delta } : l))
-            .filter((l) => l.qty > 0);
-          return { lines: updated };
-        });
-      },
+            changeQty: (key, delta) =>
+                set({
+                    lines: get()
+                        .lines.map((l) => (l.key === key ? { ...l, qty: l.qty + delta } : l))
+                        .filter((l) => l.qty > 0),
+                }),
 
-      /** Remove a specific line entirely. */
-      removeLine: (key) => {
-        set((state) => ({ lines: state.lines.filter((l) => l.key !== key) }));
-      },
+            removeLine: (key) => set({ lines: get().lines.filter((l) => l.key !== key) }),
+            clear: () => set({ lines: [] }),
+            open: () => set({ isOpen: true }),
+            close: () => set({ isOpen: false }),
 
-      /** Clear all items from the cart. */
-      clear: () => set({ lines: [] }),
-
-      /** Open the cart drawer. */
-      open: () => set({ isOpen: true }),
-
-      /** Close the cart drawer. */
-      close: () => set({ isOpen: false }),
-
-      // ── Derived values (called as functions) ─────────────────────────────────
-
-      /** Total number of individual items (sum of all qtys). */
-      count: () => get().lines.reduce((n, l) => n + l.qty, 0),
-
-      /** Total price across all lines. */
-      total: () =>
-        get().lines.reduce(
-          (sum, l) => sum + lineUnitPrice(l) * l.qty,
-          0
-        ),
-    }),
-    {
-      name: "restaurant-cart", // localStorage key
-      // Only persist the lines array; isOpen should always reset to false on page load
-      partialize: (state) => ({ lines: state.lines }),
-    }
-  )
+            count: () => get().lines.reduce((s, l) => s + l.qty, 0),
+            total: () => get().lines.reduce((s, l) => s + lineUnitPrice(l) * l.qty, 0),
+        }),
+        {
+            name: "cart-storage",
+            partialize: (s) => ({ slug: s.slug, lines: s.lines }), // don't persist isOpen
+        }
+    )
 );
-
-export { useCart };
-export default useCart;
