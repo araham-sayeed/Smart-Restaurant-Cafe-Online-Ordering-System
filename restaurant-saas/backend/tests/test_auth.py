@@ -73,3 +73,29 @@ def test_customer_register_and_menu_permissions():
     )
     assert admin_register.status_code == 201
     assert client.get("/auth/me", headers={"Authorization": f"Bearer {admin_register.json()['access_token']}"}).json()["role"] == "customer"
+
+
+def test_customer_passwordless_otp_auth():
+    import random
+    phone = f"0507{random.randint(100000, 999999)}"
+
+    # Request OTP
+    req = client.post("/auth/customer/otp/request", json={"phone": phone})
+    assert req.status_code == 200, req.text
+    dev_otp = req.json().get("dev_otp") or "000000"
+
+    # Verify OTP without password (auto-creates customer)
+    verify = client.post(
+        "/auth/customer/otp/verify",
+        json={"phone": phone, "otp_code": dev_otp, "full_name": "Alice Customer"},
+    )
+    assert verify.status_code == 200, verify.text
+    token = verify.json()["access_token"]
+
+    # Verify customer profile
+    me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    data = me.json()
+    assert data["role"] == "customer"
+    assert data["full_name"] == "Alice Customer"
+    assert data["phone"] == phone

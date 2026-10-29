@@ -5,6 +5,7 @@ import {
   createCategory,
   deleteCategory,
   createItem,
+  updateItem,
   deleteItem,
   setAvailability,
   createGroup,
@@ -15,7 +16,7 @@ import {
 import { useAuth } from "../../store/useAuth";
 
 export default function MenuBuilder() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [categories, setCategories] = useState([]);
   const [activeCatId, setActiveCatId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,7 @@ export default function MenuBuilder() {
     description: "",
     price: "",
     image_url: "",
+    prep_time_minutes: "5",
   });
 
   const [groupModalItem, setGroupModalItem] = useState(null);
@@ -123,14 +125,41 @@ export default function MenuBuilder() {
         description: itemForm.description || null,
         price: parseFloat(itemForm.price),
         image_url: itemForm.image_url || null,
+        prep_time_minutes: parseInt(itemForm.prep_time_minutes, 10) || 5,
         sort_order: 0,
         is_available: true,
       });
-      setItemForm({ name: "", description: "", price: "", image_url: "" });
+      setItemForm({ name: "", description: "", price: "", image_url: "", prep_time_minutes: "5" });
       setShowItemModal(false);
       await loadMenu();
     } catch (err) {
       alert("Error adding item: " + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  const handleQuickEditPrepTime = async (item) => {
+    const current = item.prep_time_minutes || 5;
+    const input = prompt(`Set preparation time (minutes) for "${item.name}":`, current);
+    if (!input) return;
+    const minutes = parseInt(input, 10);
+    if (isNaN(minutes) || minutes < 1) {
+      alert("Please enter a valid positive number of minutes.");
+      return;
+    }
+    try {
+      await updateItem(item.id, {
+        category_id: item.category_id,
+        name: item.name,
+        description: item.description,
+        price: parseFloat(item.price),
+        image_url: item.image_url,
+        is_available: item.is_available,
+        prep_time_minutes: minutes,
+        sort_order: item.sort_order || 0,
+      });
+      await loadMenu();
+    } catch (err) {
+      alert("Error updating prep time: " + (err.response?.data?.detail || err.message));
     }
   };
 
@@ -249,6 +278,12 @@ export default function MenuBuilder() {
           <span className="text-xs bg-sage/20 text-ink px-3 py-1 rounded-full font-medium">
             Restaurant #{user?.restaurant_id}
           </span>
+          <button
+            onClick={logout}
+            className="text-xs font-semibold px-3 py-1.5 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+          >
+            Log out
+          </button>
         </div>
       </header>
 
@@ -352,11 +387,24 @@ export default function MenuBuilder() {
                           className="w-full h-36 object-cover rounded-xl mb-3"
                         />
                       )}
-                      <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-start justify-between gap-2 mb-1">
                         <h3 className="font-bold text-ink text-base">{item.name}</h3>
                         <span className="font-mono font-semibold text-sm bg-sand px-2 py-0.5 rounded text-ink">
                           ${parseFloat(item.price).toFixed(2)}
                         </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[11px] font-semibold text-gray-600 bg-sand/60 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          ⏱️ {item.prep_time_minutes || 5} min prep
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickEditPrepTime(item)}
+                          className="text-[11px] text-sage font-semibold hover:underline"
+                          title="Change prep time"
+                        >
+                          (edit)
+                        </button>
                       </div>
                       {item.description && (
                         <p className="text-xs text-gray-500 line-clamp-2 mb-3">
@@ -518,6 +566,24 @@ export default function MenuBuilder() {
                   className="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-sage"
                   required
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">
+                  Preparation Time (minutes)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="180"
+                  placeholder="5"
+                  value={itemForm.prep_time_minutes}
+                  onChange={(e) => setItemForm({ ...itemForm, prep_time_minutes: e.target.value })}
+                  className="w-full border rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-sage"
+                  required
+                />
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Used for dynamic kitchen & customer countdown timers (e.g. coffee = 5m, pizza = 10m).
+                </p>
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1">Description (optional)</label>

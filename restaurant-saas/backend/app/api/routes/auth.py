@@ -1,3 +1,4 @@
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
@@ -15,9 +16,11 @@ from app.schemas.auth import (
     UserOut,
     OtpRequest,
     OtpRequestResponse,
+    CustomerOtpRequest,
+    CustomerVerifyOtpRequest,
 )
 from app.services.otp_service import issue_otp, verify_otp
-from app.utils.identifiers import normalize_identifier
+from app.utils.identifiers import normalize_identifier, normalize_phone
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -72,7 +75,51 @@ def request_otp(data: OtpRequest, db: Session = Depends(get_db)):
 
     code = issue_otp(data.purpose, otp_id)
     dev_otp = code if settings.EXPOSE_DEV_OTP else None
-    return OtpRequestResponse(dev_otp=dev_otp)
+    return OtpRequestResponse(dev_otp=dev_otp, phone=normalized)
+
+
+@router.post("/customer/otp/request", response_model=OtpRequestResponse)
+def customer_request_otp(data: CustomerOtpRequest, db: Session = Depends(get_db)):
+    digits = normalize_phone(data.phone)
+    code = issue_otp("customer_auth", digits)
+    dev_otp = code if settings.EXPOSE_DEV_OTP else None
+    return OtpRequestResponse(
+        message="Verification code sent",
+        phone=digits,
+        dev_otp=dev_otp,
+    )
+
+
+@router.post("/customer/otp/verify", response_model=TokenResponse)
+def customer_verify_otp(data: CustomerVerifyOtpRequest, db: Session = Depends(get_db)):
+    digits = normalize_phone(data.phone)
+    if not verify_otp("customer_auth", digits, data.otp_code):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired verification code")
+
+    user = db.scalar(select(User).where(User.phone == digits))
+    if not user:
+        restaurant = db.scalar(select(Restaurant).order_by(Restaurant.id))
+        if not restaurant:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Restaurant not configured")
+
+        name = (data.full_name or "").strip() or f"Customer {digits[-4:]}"
+        user = User(
+            email=None,
+            phone=digits,
+            hashed_password=hash_password(secrets.token_hex(16)),
+            full_name=name,
+            role="customer",
+            restaurant_id=restaurant.id,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    elif data.full_name and data.full_name.strip() and user.full_name.startswith("Customer "):
+        user.full_name = data.full_name.strip()
+        db.commit()
+        db.refresh(user)
+
+    return TokenResponse(access_token=create_access_token(user.id, user.role, user.restaurant_id))
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)

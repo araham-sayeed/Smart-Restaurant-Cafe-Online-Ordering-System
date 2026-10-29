@@ -18,6 +18,7 @@ class ItemIn(BaseModel):
     price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     image_url: str | None = None
     is_available: bool = True
+    prep_time_minutes: int = Field(default=5, ge=1, le=180)
     sort_order: int = 0
 
 class AvailabilityIn(BaseModel):
@@ -53,6 +54,7 @@ class ItemOut(BaseModel):
     price: Decimal
     image_url: str | None
     is_available: bool
+    prep_time_minutes: int = 5
     sort_order: int
     addon_groups: list[AddonGroupOut] = []
     model_config = {"from_attributes": True}

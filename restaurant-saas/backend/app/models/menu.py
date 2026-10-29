@@ -25,6 +25,7 @@ class MenuItem(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
+    prep_time_minutes: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     category = relationship("Category", back_populates="items")

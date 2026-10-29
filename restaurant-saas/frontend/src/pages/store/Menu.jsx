@@ -1,18 +1,26 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { getPublicMenu } from "../../api/menu";
 import { useCart } from "../../store/useCart";
+import { useAuth } from "../../store/useAuth";
 import ItemModal from "../../components/menu/ItemModal";
 import CartDrawer from "../../components/cart/CartDrawer";
 
 export default function Menu() {
   const { slug } = useParams();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [menu, setMenu] = useState(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
   const count = useCart((s) => s.count());
   const total = useCart((s) => s.total());
   const open = useCart((s) => s.open);
+
+  const handleLogout = () => {
+    logout();
+    navigate("/customer/login");
+  };
 
   useEffect(() => {
     getPublicMenu(slug)
@@ -46,19 +54,44 @@ export default function Menu() {
   return (
     <div className="min-h-screen bg-cream pb-28 text-ink">
       {/* Header */}
-      <header className="p-5 bg-white shadow-sm sticky top-0 z-20 flex items-center justify-between">
+      <header className="p-4 sm:p-5 bg-white shadow-sm sticky top-0 z-20 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-ink">
             {menu.restaurant_name}
           </h1>
           <p className="text-xs text-ink/50">Online Ordering & Pickup</p>
         </div>
-        <button
-          onClick={open}
-          className="relative px-3.5 py-2 bg-sand rounded-xl text-xs font-semibold hover:bg-sand/80 transition-colors"
-        >
-          🛒 Cart {count > 0 && <span className="text-sage-dark">({count})</span>}
-        </button>
+        <div className="flex items-center gap-2.5">
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:inline text-xs text-ink/60 font-medium">
+                {user.full_name || user.phone}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors"
+                title="Log out of account"
+              >
+                Log out
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/customer/login"
+              className="px-3 py-1.5 text-xs font-semibold text-ink bg-sand/60 hover:bg-sand rounded-xl transition-colors"
+            >
+              Log in
+            </Link>
+          )}
+
+          <button
+            onClick={open}
+            className="relative px-3.5 py-2 bg-sand rounded-xl text-xs font-semibold hover:bg-sand/80 transition-colors flex items-center gap-1"
+          >
+            <span>🛒 Cart</span>
+            {count > 0 && <span className="text-sage-dark font-bold">({count})</span>}
+          </button>
+        </div>
       </header>
 
       {/* Category Sections */}

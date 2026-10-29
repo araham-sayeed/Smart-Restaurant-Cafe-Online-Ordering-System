@@ -12,10 +12,10 @@ class OrderLineIn(BaseModel):
 class OrderCreate(BaseModel):
     customer_name: str = Field(min_length=1, max_length=120)
     customer_phone: str = Field(min_length=5, max_length=30)
-    order_type: Literal["pickup", "delivery"]
+    order_type: Literal["pickup", "delivery", "dine_in", "takeaway"]
     delivery_address: str | None = Field(default=None, max_length=300)
     notes: str | None = Field(default=None, max_length=500)
-    payment_method: Literal["cash"] = "cash"      # "card" arrives in Phase 5
+    payment_method: Literal["cash", "card"] = "cash"
     items: list[OrderLineIn] = Field(min_length=1, max_length=50)
 
 class OrderAddonOut(BaseModel):
@@ -36,8 +36,12 @@ class OrderOut(BaseModel):
     public_id: str
     id: int
     customer_name: str
+    customer_phone: str
     order_type: str
     status: str
+    estimated_prep_minutes: int = 5
+    prep_started_at: datetime | None = None
+    ready_at: datetime | None = None
     payment_method: str
     payment_status: str
     subtotal: Decimal
@@ -46,3 +50,6 @@ class OrderOut(BaseModel):
     created_at: datetime
     items: list[OrderItemOut] = []
     model_config = {"from_attributes": True}
+
+class OrderStatusUpdate(BaseModel):
+    status: Literal["received", "preparing", "ready", "completed", "cancelled"]

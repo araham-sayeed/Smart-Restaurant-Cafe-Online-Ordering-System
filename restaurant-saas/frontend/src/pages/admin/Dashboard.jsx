@@ -56,7 +56,26 @@ export default function Dashboard() {
                 Menu Builder
               </h2>
               <p className="text-xs text-gray-500">
-                Create categories, add menu dishes, set item variations and prices, and manage real-time inventory.
+                Create categories, add menu dishes, set item variations, prep times, and manage real-time inventory.
+              </p>
+            </Link>
+
+            {/* Card: Kitchen Live Display (Admin/Staff Only) */}
+            <Link
+              to="/admin/kitchen"
+              className="group block bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md hover:border-amber-500 transition-all"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-2xl">👨‍🍳</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 group-hover:underline">
+                  Live Queue &rarr;
+                </span>
+              </div>
+              <h2 className="text-lg font-bold text-ink mb-1 group-hover:text-amber-600 transition-colors">
+                Kitchen Display System (KDS)
+              </h2>
+              <p className="text-xs text-gray-500">
+                Real-time kitchen order tickets, dynamic coffee & food prep countdown timers, and audio alerts.
               </p>
             </Link>
 

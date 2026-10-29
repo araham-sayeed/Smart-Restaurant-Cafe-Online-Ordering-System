@@ -1,13 +1,24 @@
 from decimal import Decimal
-from fastapi import HTTPException
+from datetime import datetime, timezone
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from app.models.menu import MenuItem, AddonGroup
 from app.models.order import Order, OrderItem, OrderItemAddon
 from app.models.restaurant import Restaurant
+from app.models.user import User
 from app.schemas.order import OrderCreate
+from app.services.event_bus import publish_order_event, serialize_order_for_event
 
 TWO = Decimal("0.01")
+
+VALID_TRANSITIONS = {
+    "received": {"preparing", "cancelled"},
+    "preparing": {"ready", "cancelled"},
+    "ready": {"completed", "cancelled"},
+    "completed": set(),
+    "cancelled": set(),
+}
 
 def bad(msg: str):
     raise HTTPException(400, msg)
@@ -25,6 +36,9 @@ def create_order(db: Session, restaurant: Restaurant, data: OrderCreate) -> Orde
     ).all()
     items_by_id = {i.id: i for i in items}
 
+    # Calculate max prep time across all ordered items (e.g. max(pizza=10, coffee=5) = 10)
+    max_prep = max((i.prep_time_minutes for i in items if getattr(i, "prep_time_minutes", None)), default=5)
+
     order = Order(
         restaurant_id=restaurant.id,
         customer_name=data.customer_name.strip(),
@@ -34,7 +48,8 @@ def create_order(db: Session, restaurant: Restaurant, data: OrderCreate) -> Orde
         notes=data.notes,
         payment_method=data.payment_method,
         status="received",
-        payment_status="unpaid",
+        estimated_prep_minutes=max_prep,
+        payment_status="paid" if data.payment_method == "card" else "unpaid",
         subtotal=Decimal("0"),
         total=Decimal("0"),
     )
@@ -87,15 +102,65 @@ def create_order(db: Session, restaurant: Restaurant, data: OrderCreate) -> Orde
         order.items.append(order_item)
 
     order.subtotal = subtotal.quantize(TWO)
-    order.total = order.subtotal       # tax/fees can be added later
+    order.total = order.subtotal
     db.add(order)
     db.commit()
 
-    # Re-query with eager loading so OrderOut can serialise items → addons.
-    # db.refresh() only refreshes scalar columns, not relationships.
-    order = db.scalar(
+    # Re-query with eager loading
+    loaded_order = db.scalar(
         select(Order)
         .where(Order.id == order.id)
         .options(selectinload(Order.items).selectinload(OrderItem.addons))
     )
+
+    # Publish real-time event to Redis
+    try:
+        publish_order_event(
+            restaurant_id=loaded_order.restaurant_id,
+            public_id=loaded_order.public_id,
+            event_type="order.created",
+            order_data=serialize_order_for_event(loaded_order)
+        )
+    except Exception:
+        pass
+
+    return loaded_order
+
+def update_order_status(db: Session, order_id: int, new_status: str, user: User) -> Order:
+    order = db.scalar(
+        select(Order)
+        .where(Order.id == order_id, Order.restaurant_id == user.restaurant_id)
+        .options(selectinload(Order.items).selectinload(OrderItem.addons))
+    )
+    if not order:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+
+    allowed = VALID_TRANSITIONS.get(order.status, set())
+    if new_status not in allowed:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Cannot change order status from '{order.status}' to '{new_status}'"
+        )
+
+    order.status = new_status
+    now = datetime.now(timezone.utc)
+    if new_status == "preparing" and not order.prep_started_at:
+        order.prep_started_at = now
+    elif new_status == "ready" and not order.ready_at:
+        order.ready_at = now
+
+    db.commit()
+    db.refresh(order)
+
+    # Broadcast event via Redis pub/sub
+    try:
+        publish_order_event(
+            restaurant_id=order.restaurant_id,
+            public_id=order.public_id,
+            event_type="order.updated",
+            order_data=serialize_order_for_event(order)
+        )
+    except Exception:
+        pass
+
     return order

@@ -9,6 +9,7 @@ import CustomerLogin from "./pages/customer/Login";
 import CustomerRegister from "./pages/customer/Register";
 import Dashboard from "./pages/admin/Dashboard";
 import MenuBuilder from "./pages/admin/MenuBuilder";
+import Kitchen from "./pages/admin/Kitchen";
 
 import Menu from "./pages/store/Menu";
 import MenuRedirect from "./pages/store/MenuRedirect";
@@ -66,6 +67,14 @@ export default function App() {
           element={
             <AdminRoute>
               <MenuBuilder />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/kitchen"
+          element={
+            <AdminRoute>
+              <Kitchen />
             </AdminRoute>
           }
         />
